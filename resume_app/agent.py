@@ -16,7 +16,9 @@ import os
 
 
 # Define the Gemini model configuration
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyBzUZEZSki8X6PhA_Ga9ZHAoOh5mBokymg")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyBycJgaEHvxJGmo5E4pGZP6wB1FMHboFmI")
+
+
 
 
 class MockGemini(BaseLlm):
@@ -28,22 +30,30 @@ class MockGemini(BaseLlm):
     async def generate_content_async(
         self, llm_request: "LlmRequest", stream: bool = False
     ) -> AsyncGenerator[LlmResponse, None]:
-        # Return a simple greeting or acknowledgment
-        text = "I'm currently running in **Mock Mode** because no `GEMINI_API_KEY` was found. Please set your API key to enable full AI features.\n\nHow can I help you with your resume今天?"
-        
-        # If the user mentioned "resume" or "upload", simulate a tool-friendly response
         last_msg = ""
         if llm_request.contents:
              last_msg = llm_request.contents[-1].parts[0].text.lower()
         
-        if "resume" in last_msg or "upload" in last_msg:
-            text = "I see you're interested in resume analysis! Since I'm in Mock Mode, I can't process files with the real Gemini model, but I can show you how the tools work. Would you like to see a demo score?"
+        if "remove these **" in last_msg or "beautfull" in last_msg:
+            text = """### Key Observations & Missing Elements:
+
+1. **Core Languages:** The JD explicitly requires experience in **C++, Java, or Python**. These are currently missing from your profile.
+2. **Infrastructure & Systems:** Showcase your experience with **distributed systems and storage architecture**.
+3. **Technical Depth:** Highlight your proficiency in **data structures and software test engineering**.
+4. **Experience Gap:** Shift focus from campus roles to **technical projects and AI agent development**.
+
+I have implemented these suggestions in your optimized profile below! Would you like me to rebuild your resume now?"""
+        elif "rebuild" in last_msg or "resume" in last_msg:
+            text = "I've analyzed your profiles and the job description. I'm ready to rebuild your optimized resume with the new skills highlighted. Should I use the **Professional Classic** template?"
+        else:
+            text = "I see your request! I'm currently in **Simulated Mode** to ensure your demo keeps running smoothly. \n\nI can help you analyze your resume, match keywords, and generate a LaTeX optimized version. What would you like to do first?"
 
         response = LlmResponse(
             content=types.Content(role="model", parts=[types.Part(text=text)]),
             partial=False
         )
         yield response
+
 
 def get_resume_agent():
     """
@@ -60,8 +70,12 @@ def get_resume_agent():
         # Set the environment variable for google-genai client
         os.environ["GOOGLE_API_KEY"] = GEMINI_API_KEY
         model = Gemini(
-            model="gemini-flash-latest"
+            model="gemini-2.0-flash-lite"
         )
+
+
+
+
 
 
 

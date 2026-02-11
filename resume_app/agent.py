@@ -46,7 +46,8 @@ I have implemented these suggestions in your optimized profile below! Would you 
         elif "rebuild" in last_msg or "resume" in last_msg:
             text = "I've analyzed your profiles and the job description. I'm ready to rebuild your optimized resume with the new skills highlighted. Should I use the **Professional Classic** template?"
         else:
-            text = "I see your request! I'm currently in **Simulated Mode** to ensure your demo keeps running smoothly. \n\nI can help you analyze your resume, match keywords, and generate a LaTeX optimized version. What would you like to do first?"
+            text = "I see your request! I'm currently in **Simulated Mode** to ensure your demo keeps running smoothly. \n\nI can help you analyze your resume for **missing** keywords and then **rebuild** a LaTeX optimized version. What would you like to do first?"
+
 
         response = LlmResponse(
             content=types.Content(role="model", parts=[types.Part(text=text)]),
@@ -55,32 +56,62 @@ I have implemented these suggestions in your optimized profile below! Would you 
         yield response
 
 
+class FallbackGemini(BaseLlm):
+    """
+    Attempts use of real Gemini, falls back to MockGemini on error.
+    """
+    real_model: Gemini
+    mock_model: MockGemini
+    model: str = "fallback-gemini"
+
+    async def generate_content_async(
+        self, llm_request: "LlmRequest", stream: bool = False
+    ) -> AsyncGenerator[LlmResponse, None]:
+        last_text = []
+        try:
+            # Try real model
+            async for resp in self.real_model.generate_content_async(llm_request, stream):
+                if resp.content and resp.content.parts:
+                    for part in resp.content.parts:
+                        if part.text:
+                            last_text.append(part.text)
+                yield resp
+            
+            # If we got absolutely no text after success, trigger mock as failsafe
+            if not "".join(last_text).strip():
+                raise ValueError("No text returned from live model")
+
+        except Exception as e:
+            # Fallback to mock
+            async for resp in self.mock_model.generate_content_async(llm_request, stream):
+                if resp.content and resp.content.parts:
+                    orig = resp.content.parts[0].text or ""
+                    resp.content.parts[0].text = f"*[Simulated Mode active due to API limit]*\n\n{orig}"
+                yield resp
+
+
+
+
 def get_resume_agent():
     """
     Initializes and returns the Google ADK Agent for resume building.
-    Has a fallback if API_KEY is not provided.
+    Uses FallbackGemini to automatically switch to Mock Mode on error.
     """
     
-    # Check if API key is provided
-    use_mock = GEMINI_API_KEY == "YOUR_API_KEY_HERE" or not GEMINI_API_KEY
-
-    if use_mock:
-        model = MockGemini()
-    else:
-        # Set the environment variable for google-genai client
-        os.environ["GOOGLE_API_KEY"] = GEMINI_API_KEY
-        model = Gemini(
-            model="gemini-2.0-flash-lite"
-        )
-
-
-
-
-
-
-
+    # Set the environment variable for google-genai client
+    # If the key is the placeholder, the live model will likely fail immediately and trigger fallback
+    os.environ["GOOGLE_API_KEY"] = GEMINI_API_KEY
+    
+    real_model = Gemini(
+        model="gemini-2.0-flash-lite"
+    )
+    mock_model = MockGemini()
+    
+    # Use FallbackGemini as the primary model
+    model = FallbackGemini(real_model=real_model, mock_model=mock_model)
 
     agent = Agent(
+
         name="ResumeAI",
         instruction="""
         You are a smart ATS-optimized Resume Builder.
